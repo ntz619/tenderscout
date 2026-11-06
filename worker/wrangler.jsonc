@@ -7,7 +7,7 @@
   "vars": {
     "N8N_BASE_URL": "https://tenderautomation.app.n8n.cloud",
     "N8N_TABLE_ID": "nSw53udgNius49RS",
+    "N8N_WEBHOOK_URL": "https://tenderautomation.app.n8n.cloud/webhook/tenderscout-read",
     "ALLOWED_ORIGINS": "https://ntz619.github.io"
   }
 }
-
