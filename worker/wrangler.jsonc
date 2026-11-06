@@ -1,0 +1,12 @@
+{
+  "$schema": "../node_modules/wrangler/config-schema.json",
+  "name": "tenderscout-api",
+  "main": "index.js",
+  "compatibility_date": "2026-11-06",
+  "workers_dev": true,
+  "vars": {
+    "N8N_BASE_URL": "https://tenderautomation.app.n8n.cloud",
+    "N8N_TABLE_ID": "nSw53udgNius49RS",
+    "ALLOWED_ORIGINS": "https://ntz619.github.io,http://localhost:4173,http://127.0.0.1:4173"
+  }
+}
