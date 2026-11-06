@@ -4,7 +4,7 @@ async function equalSecret(a,b) {
   const [x,y]=await Promise.all([crypto.subtle.digest('SHA-256',encode.encode(a)),crypto.subtle.digest('SHA-256',encode.encode(b))]);
   const u=new Uint8Array(x),v=new Uint8Array(y);let diff=0;for(let i=0;i<u.length;i++)diff|=u[i]^v[i];return diff===0;
 }
-export function createWorker(upstreamFetch=(...args)=>fetch(...args)) {
+export function createWorker(upstreamFetch=(input,init)=>fetch(input,init)) {
   return {async fetch(request,env) {
     const origin=request.headers.get('Origin'),allowed=String(env.ALLOWED_ORIGINS||'').split(',').map(s=>s.trim()).filter(Boolean);
     const headers={'Content-Type':'application/json; charset=utf-8','Cache-Control':'no-store','Vary':'Origin','X-Content-Type-Options':'nosniff','Referrer-Policy':'no-referrer'};
@@ -42,3 +42,4 @@ export function createWorker(upstreamFetch=(...args)=>fetch(...args)) {
   }};
 }
 export default createWorker();
+
