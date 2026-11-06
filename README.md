@@ -44,7 +44,9 @@ Repository **Settings → Pages → Build and deployment**:
 - Einfacher Weg: **Deploy from a branch**, Branch `main`, Ordner **`/docs`**, **Save**.
 - Alternativ: Source **GitHub Actions** wählen und den mitgelieferten Workflow `Deploy dashboard to GitHub Pages` manuell ausführen. Dieser veröffentlicht ausschließlich `docs/`.
 
-Geplante URL: **https://ntz619.github.io/tenderscout/**. Erst ein erfolgreiches Pages-Deployment bestätigt die Veröffentlichung.
+Veröffentlichtes Dashboard: **https://ntz619.github.io/tenderscout/**. Die erste GitHub-Pages-Bereitstellung wurde erfolgreich abgeschlossen.
+
+Worker: **https://tenderscout-api.niklasriemer98.workers.dev/api/tenders**. Code, n8n-URL, Table-ID und erlaubte Origin sind bereitgestellt; die Live-Verbindung benötigt die beiden Secrets und einen erfolgreichen Verbindungstest im Dashboard.
 
 ## 2. Cloudflare Worker einrichten
 
@@ -79,9 +81,9 @@ npx wrangler secret put DASHBOARD_TOKEN --config worker/wrangler.jsonc
 npm run worker:deploy
 ```
 
-Die `secret put`-Befehle fragen die Werte verdeckt ab. Ein Dashboard-Token kann beispielsweise in einem Passwortmanager erzeugt werden (mindestens 32 zufällige Zeichen). `worker/wrangler.jsonc` ist bereits auf diese n8n-Tabelle und die GitHub-Pages-Origin eingestellt. Die zusätzlich erlaubten localhost-Origins können vor der produktiven Bereitstellung entfernt werden.
+Die `secret put`-Befehle fragen die Werte verdeckt ab. Ein Dashboard-Token kann beispielsweise in einem Passwortmanager erzeugt werden (mindestens 32 zufällige Zeichen). `worker/wrangler.jsonc` ist bereits auf diese n8n-Tabelle und die GitHub-Pages-Origin eingestellt. Für lokale Live-Tests muss die jeweilige Origin (z. B. `http://localhost:4173`) zusätzlich zu `ALLOWED_ORIGINS` hinzugefügt werden.
 
-Für eine feste Worker-URL im Dashboard `docs/config.js` bearbeiten: `workerUrl: 'https://…workers.dev'`. Dieses Feld ist öffentlich und darf nur die URL enthalten. Alternativ merkt sich jeder Browser die unter Datenquelle eingegebene URL.
+Die Worker-URL `https://tenderscout-api.niklasriemer98.workers.dev` ist bereits in `docs/config.js` eingetragen. Dieses Feld ist öffentlich und darf nur die URL enthalten. Alternativ merkt sich jeder Browser die unter Datenquelle eingegebene URL.
 
 ## Lokal ansehen und prüfen
 
@@ -104,3 +106,4 @@ Datumsangaben ohne Uhrzeit gelten bis 23:59:59 Uhr Europe/Berlin. Deutsche Angab
 - [n8n API-Authentifizierung](https://docs.n8n.io/connect/n8n-api/authentication/)
 - [Cloudflare Worker Secrets](https://developers.cloudflare.com/workers/configuration/secrets/)
 - [GitHub Pages mit Workflows](https://docs.github.com/en/pages/getting-started-with-github-pages/using-custom-workflows-with-github-pages)
+
