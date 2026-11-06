@@ -1,0 +1,99 @@
+{
+  "name": "TenderScout - Read Data Table",
+  "active": false,
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "GET",
+        "path": "tenderscout-read",
+        "authentication": "headerAuth",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "6d35cf36-e1b7-4862-9caf-25ea5c15ece0",
+      "name": "Dashboard Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        240,
+        300
+      ],
+      "webhookId": "e12de6ce-e593-4c0b-937a-8c695a815fd1"
+    },
+    {
+      "parameters": {
+        "resource": "row",
+        "operation": "get",
+        "dataTableId": {
+          "__rl": true,
+          "value": "nSw53udgNius49RS",
+          "mode": "id"
+        },
+        "returnAll": true
+      },
+      "id": "b85a0cc9-4865-477b-a810-315159cc9884",
+      "name": "Read rated_tenders",
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1,
+      "position": [
+        500,
+        300
+      ],
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { rows: $input.all().filter(item => item.json.id != null).map(item => item.json) } }}",
+        "options": {
+          "responseCode": 200,
+          "responseHeaders": {
+            "entries": [
+              {
+                "name": "Cache-Control",
+                "value": "no-store"
+              }
+            ]
+          }
+        }
+      },
+      "id": "6316a43b-2b93-4cb4-b934-e2a01d3428b5",
+      "name": "Return tenders",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.4,
+      "position": [
+        760,
+        300
+      ]
+    }
+  ],
+  "connections": {
+    "Dashboard Webhook": {
+      "main": [
+        [
+          {
+            "node": "Read rated_tenders",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Read rated_tenders": {
+      "main": [
+        [
+          {
+            "node": "Return tenders",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "pinData": {},
+  "tags": []
+}
