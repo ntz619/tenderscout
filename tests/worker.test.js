@@ -15,7 +15,7 @@ test('trial webhook mode reads the table without an n8n API key',async()=>{
   const webhookEnv={...env,N8N_API_KEY:undefined,N8N_WEBHOOK_URL:'https://tenderautomation.app.n8n.cloud/webhook/tenderscout-read',N8N_WEBHOOK_TOKEN:'b'.repeat(48)};
   let received;
   const w=createWorker(async(url,options)=>{received={url:String(url),options};return Response.json({rows:[{id:1,short_summary:'Trial works',relevance_likelihood_percent:70,ampel:'ROT'}]});});
-  const result=await w.fetch(request(),webhookEnv),body=await result.json();assert.equal(result.status,200);assert.equal(body.rows.length,1);assert.equal(body.rows[0].ampel,undefined);assert.equal(received.options.headers['X-TenderScout-Token'],webhookEnv.N8N_WEBHOOK_TOKEN);assert.equal(received.options.headers['X-N8N-API-KEY'],undefined);
+  const result=await w.fetch(request(),webhookEnv),body=await result.json();assert.equal(result.status,200);assert.equal(body.rows.length,1);assert.equal(body.rows[0].ampel,undefined);assert.equal(received.options.headers.get('X-TenderScout-Token'),webhookEnv.N8N_WEBHOOK_TOKEN);assert.equal(received.options.headers.get('X-N8N-API-KEY'),null);
   assert.equal((await w.fetch(request(),{...webhookEnv,N8N_WEBHOOK_URL:'https://different.app.n8n.cloud/webhook/x'})).status,503);
   assert.equal((await w.fetch(request(),{...webhookEnv,N8N_WEBHOOK_TOKEN:''})).status,503);
 });
@@ -24,3 +24,13 @@ test('empty webhook tables return an empty result and disabled webhooks report a
   const empty=await createWorker(async()=>Response.json({rows:[]})).fetch(request(),webhookEnv);assert.deepEqual((await empty.json()).rows,[]);
   const missing=await createWorker(async()=>new Response('not active',{status:404})).fetch(request(),webhookEnv);assert.equal(missing.status,502);assert.match((await missing.json()).error,/Workflow veröffentlichen/);
 });
+
+test('webhook response failures identify the failing step without leaking secrets',async()=>{
+  const webhookEnv={...env,N8N_API_KEY:undefined,N8N_WEBHOOK_URL:'https://tenderautomation.app.n8n.cloud/webhook/tenderscout-read',N8N_WEBHOOK_TOKEN:'b'.repeat(48)};
+  for(const [response,expected] of [[new Response(''),/antwortet leer/],[Response.json({message:'started'}),/keine rows-Liste/],[new Response(null,{status:302,headers:{Location:'https://example.com'}}),/leitet/],[new Response(null,{status:500}),/Executions/]]){
+    const result=await createWorker(async()=>response).fetch(request(),webhookEnv);assert.equal(result.status,502);assert.match((await result.json()).error,expected);
+  }
+  const failed=await createWorker(async()=>{throw new Error(webhookEnv.N8N_WEBHOOK_TOKEN);}).fetch(request(),webhookEnv);assert.equal(failed.status,502);assert.ok(!(await failed.text()).includes(webhookEnv.N8N_WEBHOOK_TOKEN));
+  const invalid=await createWorker().fetch(request(),{...webhookEnv,N8N_WEBHOOK_TOKEN:'b'.repeat(40)+'\n'});assert.equal(invalid.status,503);
+});
+
