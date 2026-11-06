@@ -1,0 +1,1 @@
+{"name":"tenderscout","version":"1.0.0","private":true,"type":"module","scripts":{"test":"node --test tests/*.test.js","dev":"python -m http.server 4173 --directory docs","worker:dev":"wrangler dev --config worker/wrangler.jsonc","worker:deploy":"wrangler deploy --config worker/wrangler.jsonc"},"devDependencies":{"wrangler":"^4.0.0"}}
