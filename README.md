@@ -1,109 +1,143 @@
 # TenderScout
 
-Ein statisches Ausschreibungsdashboard für **ntz619/tenderscout** mit einem separaten, nur lesenden Cloudflare Worker für die n8n Cloud Data Table.
+Dashboard: **https://ntz619.github.io/tenderscout/**  
+Repository: **https://github.com/ntz619/tenderscout**  
+Cloudflare-API: **https://tenderscout-api.niklasriemer98.workers.dev/api/tenders**
 
-## Enthalten
+Die Oberfläche ist auf GitHub Pages veröffentlicht. Der Worker ist separat auf Cloudflare bereitgestellt. Die Live-Verbindung wird nach Einrichtung des unten beschriebenen n8n-Webhooks und der Secrets freigeschaltet.
 
-- Tabelle mit Short Summary, Prozentbewertung, Bewerbungsfrist und Quelllink; alle weiteren Felder in der Detailansicht.
-- Standardmäßig absteigend nach `relevance_likelihood_percent` sortiert.
-- Feste linke Filterleiste: Volltext, Ampel, Mindest-Relevanz, Frist, Status, Quelle und n8n-Bewertungslabel.
-- Zwei Regler für die Ampel: **Rot < 50 %, Gelb ≥ 50 und < 70 %, Grün ≥ 70 %**. Änderungen werden lokal gespeichert und wirken sofort auf Farben, Zähler und Filter. Das Quellfeld `ampel` wird niemals zur Einstufung verwendet; der Worker liefert es nicht aus.
-- Unbewertete oder ungültige Prozentwerte werden separat angezeigt und ans Ende sortiert.
-- CSV-Import (UTF-8 und Windows-1252), Export der gefilterten Auswahl, Pagination, mobile Ansicht.
-- Live-Aktualisierung alle 5 Minuten bei geöffnetem, sichtbarem Dashboard; manueller Refresh.
-- Fehler werden sichtbar angezeigt, der letzte geladene Stand bleibt erhalten. Kein stiller Wechsel zu Beispieldaten bei Live-Fehlern.
+## Dashboard
 
-## Architektur
+- Tabelle mit Short Summary, Prozentbewertung, Bewerbungsfrist und Quelllink. Begründung, Auftragswert, Publication ID, Status, Label und Zeitstempel sind in der Detailansicht enthalten.
+- Standardmäßig nach `relevance_likelihood_percent` absteigend sortiert. Fehlende und ungültige Werte stehen separat am Ende.
+- Feste linke Filterleiste für Suche, Relevanzfarben, Mindest-Relevanz, Frist, Status, Quelle und das n8n-Bewertungslabel.
+- Ampel ausschließlich aus dem Prozentwert im Dashboard: **Rot < 50 %, Gelb ≥ 50 und < 70 %, Grün ≥ 70 %**. Zwei Regler ändern die Grenzen sofort; Einstellungen bleiben lokal gespeichert. Das Quellfeld `ampel` wird zur Einstufung ignoriert und vom Worker nicht ausgeliefert.
+- CSV-Import mit UTF-8/Windows-1252, Export der gefilterten Auswahl, Pagination und mobile Ansicht.
+- Aktualisierung manuell und alle fünf Minuten, solange das Live-Dashboard sichtbar geöffnet ist. Fehler erscheinen sichtbar; es gibt keinen stillen Wechsel von Live- zu Beispieldaten.
+
+Die Datei `docs/sample-data.json` enthält die zwölf Einträge der bereitgestellten CSV einschließlich ihrer Begründungen. Sie ist im öffentlichen Repository und auf GitHub Pages öffentlich lesbar. Lokale CSV-Importe werden nur im Browser verarbeitet. Live-Daten werden mit `Cache-Control: no-store` geliefert.
+
+## Trial-kompatible Architektur
+
+Die öffentliche n8n-API ist im n8n-Cloud-Free-Trial nicht verfügbar. Deshalb nutzt die vorbereitete Konfiguration einen separaten Lese-Workflow:
 
 ```text
-Browser → GitHub Pages (docs/)
-        → Cloudflare Worker /api/tenders
-          → n8n Public API → Data Table
+GitHub Pages Dashboard
+  → Cloudflare Worker (DASHBOARD_TOKEN)
+    → n8n GET-Webhook (N8N_WEBHOOK_TOKEN)
+      → Data Table lesen → JSON-Antwort
 ```
 
-GitHub Pages hostet die Oberfläche. Die serverseitige Function läuft als eigenständiger Cloudflare Worker, weil GitHub Pages keine Functions ausführt. Der n8n-API-Schlüssel liegt nur als Cloudflare-Secret vor. Ein separater, nur für dieses Dashboard geltender Zugangscode schützt die Lese-API; CORS alleine wäre kein Zugriffsschutz. Der Code wird im Dashboard eingegeben und nur im sessionStorage dieses Browser-Tabs gespeichert. Es gibt keine Schreib-, Update- oder Löschrouten.
+GitHub Pages führt keine serverseitigen Functions aus. Der Cloudflare Worker übernimmt diesen Teil und hält den n8n-Webhook-Zugangscode vom Browser fern. CORS ist auf `https://ntz619.github.io` beschränkt; zusätzlich verlangt der Worker einen Dashboard-Zugangscode. Nur dieser separate Code wird im Dashboard eingegeben und im sessionStorage des jeweiligen Browser-Tabs gespeichert. Die n8n-Zugangsdaten gehören ausschließlich in Cloudflare-Secrets und die n8n-Credential.
 
-Die bereitgestellte `docs/sample-data.json` enthält die zwölf Einträge der gelieferten CSV einschließlich der Begründungen. Diese Datei ist auf der veröffentlichten Website und im öffentlichen Repository öffentlich lesbar. Lokale CSV-Importe werden ausschließlich im Browser verarbeitet und nicht hochgeladen. Live-Daten werden vom Worker mit `Cache-Control: no-store` geliefert.
+Jede erfolgreiche Live-Aktualisierung führt den Lese-Workflow einmal aus und verbraucht damit eine n8n-Workflow-Ausführung. Der bestehende Bewertungsworkflow wird nicht verändert. Nach Ablauf des n8n-Trials hängt der Live-Zugriff vom Fortbestand deiner n8n-Instanz ab.
 
-## Bereits eingetragene n8n-Verbindung
+## 1. n8n-Workflow importieren
 
-| Einstellung | Wert |
+Datei: **`n8n/read-tenders-workflow.json`**
+
+1. Öffne n8n in deinem bereits angemeldeten Browser und erstelle im **selben Projekt wie `rated_tenders`** einen neuen Workflow.
+2. Workflow-Menü **… → Import from File** und die JSON-Datei auswählen. Alternativ die JSON kopieren und auf der leeren Workflow-Canvas einfügen.
+3. Es erscheinen drei verbundene Nodes: **Dashboard Webhook → Read rated_tenders → Return tenders**.
+4. **Dashboard Webhook** öffnen. Authentication ist bereits **Header Auth**. Erstelle dafür eine neue Credential:
+
+| Credential-Feld | Eintrag |
 | --- | --- |
-| Instanz | `https://tenderautomation.app.n8n.cloud` |
-| Data Table | `nSw53udgNius49RS` |
-| Projekt | `V5Bw7SyNLptfnXjC` |
-| Vorhandener Bewertungsworkflow | `NaUpkSwN8iEJie29` (wird nicht verändert) |
-| Lesender Endpunkt | `/api/v1/data-tables/nSw53udgNius49RS/rows` |
+| Name des HTTP-Headers | `X-TenderScout-Token` |
+| Value des HTTP-Headers | Neuer zufälliger Zugangscode mit mindestens 32 Zeichen |
 
-Die öffentliche Data-Table-API muss in deiner n8n-Version und deinem Tarif verfügbar sein. Der Worker nutzt Cursor-Pagination mit jeweils 250 Zeilen. Bei mehr als 10.000 Zeilen oder API-Fehlern wird eine Fehlermeldung statt einer unvollständigen Tabelle zurückgegeben. Es wird nicht dedupliziert: jede n8n-Zeile bleibt als eigener Datensatz erhalten.
+5. Die Credential speichern und im Webhook auswählen. Den Zugangscode sicher speichern: **genau derselbe Wert** wird gleich als Cloudflare-Secret `N8N_WEBHOOK_TOKEN` benötigt.
+6. Im Node **Read rated_tenders** ist die Tabelle `nSw53udgNius49RS` bereits per ID eingestellt, Operation **Get**, **Return All** eingeschaltet. Bei Bedarf die Tabelle im Dropdown erneut auswählen.
+7. Workflow speichern und **veröffentlichen / aktivieren**. Die Produktions-URL muss lauten:
 
-## 1. GitHub Pages
-
-Repository **Settings → Pages → Build and deployment**:
-
-- Einfacher Weg: **Deploy from a branch**, Branch `main`, Ordner **`/docs`**, **Save**.
-- Alternativ: Source **GitHub Actions** wählen und den mitgelieferten Workflow `Deploy dashboard to GitHub Pages` manuell ausführen. Dieser veröffentlicht ausschließlich `docs/`.
-
-Veröffentlichtes Dashboard: **https://ntz619.github.io/tenderscout/**. Die erste GitHub-Pages-Bereitstellung wurde erfolgreich abgeschlossen.
-
-Worker: **https://tenderscout-api.niklasriemer98.workers.dev/api/tenders**. Code, n8n-URL, Table-ID und erlaubte Origin sind bereitgestellt; die Live-Verbindung benötigt die beiden Secrets und einen erfolgreichen Verbindungstest im Dashboard.
-
-## 2. Cloudflare Worker einrichten
-
-### Ohne lokale Installation im Cloudflare-Dashboard
-
-1. **Workers & Pages → Create application → Worker** öffnen und einen Worker namens `tenderscout-api` erstellen. Ein Hello-World-Starter genügt.
-2. **Edit code** öffnen. Den Inhalt von `worker/index.js` als Worker-Code einsetzen und deployen (ES-Module-Format mit `export default`).
-3. In **Settings → Variables and Secrets** die folgenden Variablen hinterlegen:
-
-| Typ | Name | Wert |
-| --- | --- | --- |
-| Variable | `N8N_BASE_URL` | `https://tenderautomation.app.n8n.cloud` |
-| Variable | `N8N_TABLE_ID` | `nSw53udgNius49RS` |
-| Variable | `ALLOWED_ORIGINS` | `https://ntz619.github.io` |
-| Secret | `N8N_API_KEY` | Dein n8n-API-Schlüssel |
-| Secret | `DASHBOARD_TOKEN` | Separater zufälliger Zugangscode mit mindestens 32 Zeichen |
-
-4. Änderungen deployen. Die Worker-URL sieht etwa so aus: `https://tenderscout-api.<deine-subdomain>.workers.dev`.
-5. Im TenderScout-Dashboard **Datenquelle** öffnen, Worker-URL und **DASHBOARD_TOKEN** eingeben. Niemals den n8n-API-Schlüssel im Dashboard eingeben.
-
-Den n8n-API-Schlüssel erstellst du im n8n-Editor unter **Settings → n8n API**. Nutze nach Möglichkeit einen auf das Lesen der Data Table beschränkten Schlüssel und ein Ablaufdatum. API-Schlüssel, Cloudflare-Tokens und der Dashboard-Zugangscode gehören nicht ins GitHub-Repository.
-
-### Alternativ mit Wrangler
-
-Im Projektordner:
-
-```powershell
-npm install
-npx wrangler login
-npx wrangler secret put N8N_API_KEY --config worker/wrangler.jsonc
-npx wrangler secret put DASHBOARD_TOKEN --config worker/wrangler.jsonc
-npm run worker:deploy
+```text
+https://tenderautomation.app.n8n.cloud/webhook/tenderscout-read
 ```
 
-Die `secret put`-Befehle fragen die Werte verdeckt ab. Ein Dashboard-Token kann beispielsweise in einem Passwortmanager erzeugt werden (mindestens 32 zufällige Zeichen). `worker/wrangler.jsonc` ist bereits auf diese n8n-Tabelle und die GitHub-Pages-Origin eingestellt. Für lokale Live-Tests muss die jeweilige Origin (z. B. `http://localhost:4173`) zusätzlich zu `ALLOWED_ORIGINS` hinzugefügt werden.
+Die Test-URL mit `/webhook-test/` ist nicht für das Dashboard geeignet. Ohne passende Header-Auth darf der Webhook keine Tabellendaten zurückgeben. Der Import ist absichtlich inaktiv und enthält keine Credential und keine Secrets.
 
-Die Worker-URL `https://tenderscout-api.niklasriemer98.workers.dev` ist bereits in `docs/config.js` eingetragen. Dieses Feld ist öffentlich und darf nur die URL enthalten. Alternativ merkt sich jeder Browser die unter Datenquelle eingegebene URL.
+## 2. Cloudflare-Secrets fertigstellen
 
-## Lokal ansehen und prüfen
+Worker **tenderscout-api → Settings → Runtime variables and secrets → Production**.
 
-Node.js 20+ und Python 3 verwenden. Für die Tests werden keine Pakete benötigt.
+Diese öffentlichen Variablen sind vorbereitet:
+
+| Name | Wert |
+| --- | --- |
+| `N8N_BASE_URL` | `https://tenderautomation.app.n8n.cloud` |
+| `N8N_TABLE_ID` | `nSw53udgNius49RS` |
+| `N8N_WEBHOOK_URL` | `https://tenderautomation.app.n8n.cloud/webhook/tenderscout-read` |
+| `ALLOWED_ORIGINS` | `https://ntz619.github.io` |
+
+Zusätzlich zwei Werte als **Secret** hinterlegen und deployen:
+
+| Name | Wert |
+| --- | --- |
+| `N8N_WEBHOOK_TOKEN` | Derselbe Wert wie in der n8n-Header-Auth-Credential |
+| `DASHBOARD_TOKEN` | Ein anderer zufälliger Zugangscode mit mindestens 32 Zeichen |
+
+**Für diesen Weg wird kein `N8N_API_KEY` benötigt.** Die Werte nicht im Repository oder im Chat speichern. Beide Codes im Passwortmanager aufbewahren.
+
+## 3. Dashboard verbinden
+
+1. **https://ntz619.github.io/tenderscout/** öffnen.
+2. **Datenquelle** wählen. Die Worker-URL ist bereits eingetragen: `https://tenderscout-api.niklasriemer98.workers.dev`.
+3. **Nur `DASHBOARD_TOKEN`** eingeben und **Verbinden** klicken.
+4. Als Datenquelle muss jetzt **Live · n8n Data Table** erscheinen. Neue Tabellenzeilen werden beim nächsten Refresh eingelesen.
+
+Die zwölf CSV-Beispieldaten allein bestätigen noch keine erfolgreiche Live-Verbindung. Die importierten n8n-Nodes müssen in deiner Instanz einmal erfolgreich ausgeführt werden.
+
+## Fehlerhilfe
+
+| Meldung | Prüfen |
+| --- | --- |
+| Worker-Konfiguration unvollständig | Beide Secret-Werte mit mindestens 32 Zeichen und `N8N_WEBHOOK_URL` speichern und deployen |
+| Dashboard-Zugangscode ungültig | Dashboard-Eingabe muss exakt `DASHBOARD_TOKEN` entsprechen |
+| Webhook lehnt Zugangscode ab | n8n-Header `X-TenderScout-Token` und Value mit `N8N_WEBHOOK_TOKEN` abgleichen |
+| Webhook nicht aktiv | Workflow veröffentlichen/aktivieren und Produktions-URL statt Test-URL verwenden |
+| Webhook liefert keine gültigen Tabellendaten | Data-Table-Node und Return-tenders-Node in n8n prüfen |
+| Verbindung nicht möglich | Worker-URL sowie `ALLOWED_ORIGINS=https://ntz619.github.io` prüfen |
+
+Der Worker gibt maximal 10.000 Zeilen zurück und meldet größere Datenmengen als Fehler. Er filtert die Antwort auf die erwarteten Tender-Felder. Die Ampelfarbe stammt stets aus der Berechnung im Browser. Jede n8n-Zeile bleibt ein eigener Datensatz; es wird nicht automatisch dedupliziert.
+
+## GitHub Pages erneut deployen
+
+In **Settings → Pages** ist **GitHub Actions** als Source eingestellt. `.github/workflows/pages.yml` veröffentlicht ausschließlich `docs/`, automatisch nach Änderungen in diesem Ordner auf `main`. Alternativ lässt sich der Workflow manuell starten.
+
+## Lokal entwickeln
+
+Node.js 20+ und Python 3. Die Tests benötigen keine Paketinstallation:
 
 ```powershell
 npm test
 npm run dev
 ```
 
-Dann `http://localhost:4173` öffnen. Nicht per Doppelklick über `file://` starten, da ES-Module und JSON geladen werden.
+Dann **http://localhost:4173** öffnen. Für lokale Live-Tests die localhost-Origin in `ALLOWED_ORIGINS` ergänzen. Nicht per `file://` starten, da das Dashboard ES-Module und JSON lädt.
 
-Die Tests prüfen Ampelgrenzen, ungültige Werte, Sortierung, Fristfilter mit Zeitzonen, die reale CSV, CSV-Parsing, Link- und Exportbehandlung, Worker-Authentifizierung, CORS, Pagination und Fehlerfälle. Ein erfolgreicher Mock-Test ersetzt keinen Test mit deinen n8n-Zugangsdaten.
+Zum Deployment des Workers per CLI:
 
-Datumsangaben ohne Uhrzeit gelten bis 23:59:59 Uhr Europe/Berlin. Deutsche Angaben mit `Europe/Berlin`, `Europe/Paris` oder festem `UTC+01:00`-Offset werden berücksichtigt; unklare Originalangaben bleiben in der Detailansicht sichtbar. Fristen werden in der Tabelle in Europe/Berlin angezeigt.
+```powershell
+npm install
+npx wrangler login
+npx wrangler secret put N8N_WEBHOOK_TOKEN --config worker/wrangler.jsonc
+npx wrangler secret put DASHBOARD_TOKEN --config worker/wrangler.jsonc
+npm run worker:deploy
+```
+
+`docs/config.js` enthält nur die öffentliche Worker-URL. Keine Zugangscodes dort eintragen. `worker/wrangler.jsonc` enthält ebenfalls nur öffentliche Variablen; die Secret-Befehle fragen ihre Werte separat ab.
+
+Die Tests prüfen Ampelgrenzen, fehlende Werte, Sortierung, Fristen und Zeitzonen, CSV-Parsing, die zwölf realen Beispieldatensätze, sichere Links/Exporte sowie Worker-Authentifizierung, CORS, API-Pagination, den Trial-Webhook-Weg, leere Tabellen und Fehlerfälle. Mock-Tests ersetzen keinen Live-Test in n8n.
+
+Deutsche Fristen ohne Uhrzeit gelten bis 23:59:59 Europe/Berlin. Berlin, Paris und feste UTC-Offsets der gelieferten Daten werden unterstützt. Unklare Angaben bleiben unverändert in der Detailansicht sichtbar.
+
+## Optional: öffentliche API nach einem Upgrade
+
+Der Worker unterstützt weiterhin den direkten API-Weg. Dafür `N8N_WEBHOOK_URL` entfernen und `N8N_API_KEY` als Cloudflare-Secret hinterlegen. Er liest dann `/api/v1/data-tables/nSw53udgNius49RS/rows` mit Cursor-Pagination. Dieser Weg steht im n8n-Free-Trial nicht zur Verfügung.
 
 ## Quellen
 
-- [n8n Data Table API](https://docs.n8n.io/connect/n8n-api/data-table/)
-- [n8n API-Authentifizierung](https://docs.n8n.io/connect/n8n-api/authentication/)
+- [n8n API und Trial-Einschränkung](https://docs.n8n.io/connect/n8n-api/)
+- [n8n Webhook und Header-Authentifizierung](https://docs.n8n.io/integrations/builtin/core-nodes/n8n-nodes-base.webhook/)
+- [n8n Data Table: Get rows](https://docs.n8n.io/integrations/builtin/core-nodes/n8n-nodes-base.datatable/rows/)
 - [Cloudflare Worker Secrets](https://developers.cloudflare.com/workers/configuration/secrets/)
-- [GitHub Pages mit Workflows](https://docs.github.com/en/pages/getting-started-with-github-pages/using-custom-workflows-with-github-pages)
-
