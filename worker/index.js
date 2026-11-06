@@ -18,11 +18,24 @@ export function createWorker(upstreamFetch=(input,init)=>fetch(input,init)) {
       return new Response(null,{status:204,headers:{...headers,'Access-Control-Allow-Methods':'GET, OPTIONS','Access-Control-Allow-Headers':'Authorization','Access-Control-Max-Age':'86400'}});
     }
     if(request.method!=='GET')return respond({error:'Nur lesender Zugriff ist erlaubt.'},405);
-    if(!env.N8N_API_KEY||!env.DASHBOARD_TOKEN||env.DASHBOARD_TOKEN.length<32||!env.N8N_BASE_URL||!env.N8N_TABLE_ID||!allowed.length)return respond({error:'Worker-Konfiguration unvollständig. Secrets und Variablen prüfen.'},503);
+    if(!env.DASHBOARD_TOKEN||env.DASHBOARD_TOKEN.length<32||!env.N8N_BASE_URL||!allowed.length||(!env.N8N_WEBHOOK_URL&&(!env.N8N_API_KEY||!env.N8N_TABLE_ID))||(env.N8N_WEBHOOK_URL&&(!env.N8N_WEBHOOK_TOKEN||env.N8N_WEBHOOK_TOKEN.length<32)))return respond({error:'Worker-Konfiguration unvollständig. Secrets und Variablen prüfen.'},503);
     const auth=request.headers.get('Authorization')||'';
     if(!auth.startsWith('Bearer ')||auth.length>2048||!await equalSecret(auth.slice(7),env.DASHBOARD_TOKEN))return respond({error:'Dashboard-Zugangscode fehlt oder ist ungültig.'},401);
     let base;
-    try{base=new URL(env.N8N_BASE_URL);if(base.protocol!=='https:'||base.username||base.password||base.pathname!=='/'||base.search||base.hash||!base.hostname.endsWith('.app.n8n.cloud')||!/^[A-Za-z0-9]{16}$/.test(env.N8N_TABLE_ID))throw new Error();}catch{return respond({error:'n8n-Cloud-URL oder Table-ID ist ungültig.'},503);}
+    try{base=new URL(env.N8N_BASE_URL);if(base.protocol!=='https:'||base.username||base.password||base.pathname!=='/'||base.search||base.hash||!base.hostname.endsWith('.app.n8n.cloud')||(!env.N8N_WEBHOOK_URL&&!/^[A-Za-z0-9]{16}$/.test(env.N8N_TABLE_ID)))throw new Error();}catch{return respond({error:'n8n-Cloud-URL oder Table-ID ist ungültig.'},503);}
+    if(env.N8N_WEBHOOK_URL) {
+      let webhook;
+      try{webhook=new URL(env.N8N_WEBHOOK_URL);if(webhook.origin!==base.origin||!webhook.pathname.startsWith('/webhook/')||webhook.username||webhook.password||webhook.search||webhook.hash)throw new Error();}catch{return respond({error:'Die Produktions-Webhook-URL muss zur konfigurierten n8n-Instanz gehören.'},503);}
+      const signal=AbortSignal.timeout(30000);
+      try{
+        const response=await upstreamFetch(webhook,{method:'GET',headers:{'X-TenderScout-Token':env.N8N_WEBHOOK_TOKEN,'Accept':'application/json'},redirect:'error',signal});
+        if(!response.ok){const messages={401:'Der n8n-Webhook lehnt seinen Zugangscode ab. Header-Auth prüfen.',403:'Der n8n-Webhook verweigert den Zugriff.',404:'Der n8n-Webhook ist nicht aktiv. Workflow veröffentlichen und die Produktions-URL verwenden.',429:'Zu viele Anfragen an n8n. Bitte später erneut versuchen.'};return respond({error:messages[response.status]||'Der n8n-Webhook konnte nicht ausgeführt werden.'},502);}
+        const data=await response.json(),items=Array.isArray(data)?data:data.rows;
+        if(!Array.isArray(items)||items.some(r=>!r||typeof r!=='object'||Array.isArray(r)))throw new Error('Invalid webhook rows');
+        if(items.length>10000)return respond({error:'Die Tabelle überschreitet 10.000 Einträge.'},502);
+        return respond({rows:items.map(row=>Object.fromEntries(FIELDS.filter(k=>Object.hasOwn(row,k)).map(k=>[k,row[k]]))),fetchedAt:new Date().toISOString()});
+      }catch{return respond({error:signal.aborted?'Zeitlimit beim Lesen des n8n-Webhooks erreicht.':'Der n8n-Webhook liefert keine gültigen Tabellendaten.'},502);}
+    }
     const rows=[],seen=new Set();let cursor=null;
     const signal=AbortSignal.timeout(30000);
     try {
@@ -42,4 +55,3 @@ export function createWorker(upstreamFetch=(input,init)=>fetch(input,init)) {
   }};
 }
 export default createWorker();
-
