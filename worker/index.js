@@ -27,14 +27,19 @@ export function createWorker(upstreamFetch=(input,init)=>fetch(input,init)) {
       let webhook;
       try{webhook=new URL(env.N8N_WEBHOOK_URL);if(webhook.origin!==base.origin||!webhook.pathname.startsWith('/webhook/')||webhook.username||webhook.password||webhook.search||webhook.hash)throw new Error();}catch{return respond({error:'Die Produktions-Webhook-URL muss zur konfigurierten n8n-Instanz gehören.'},503);}
       const signal=AbortSignal.timeout(30000);
-      try{
-        const response=await upstreamFetch(webhook,{method:'GET',headers:{'X-TenderScout-Token':env.N8N_WEBHOOK_TOKEN,'Accept':'application/json'},redirect:'error',signal});
-        if(!response.ok){const messages={401:'Der n8n-Webhook lehnt seinen Zugangscode ab. Header-Auth prüfen.',403:'Der n8n-Webhook verweigert den Zugriff.',404:'Der n8n-Webhook ist nicht aktiv. Workflow veröffentlichen und die Produktions-URL verwenden.',429:'Zu viele Anfragen an n8n. Bitte später erneut versuchen.'};return respond({error:messages[response.status]||'Der n8n-Webhook konnte nicht ausgeführt werden.'},502);}
-        const data=await response.json(),items=Array.isArray(data)?data:data.rows;
-        if(!Array.isArray(items)||items.some(r=>!r||typeof r!=='object'||Array.isArray(r)))throw new Error('Invalid webhook rows');
-        if(items.length>10000)return respond({error:'Die Tabelle überschreitet 10.000 Einträge.'},502);
-        return respond({rows:items.map(row=>Object.fromEntries(FIELDS.filter(k=>Object.hasOwn(row,k)).map(k=>[k,row[k]]))),fetchedAt:new Date().toISOString()});
-      }catch{return respond({error:signal.aborted?'Zeitlimit beim Lesen des n8n-Webhooks erreicht.':'Der n8n-Webhook liefert keine gültigen Tabellendaten.'},502);}
+      let upstreamHeaders;
+      try{if(/[\r\n]/.test(env.N8N_WEBHOOK_TOKEN))throw new Error('Invalid header characters');upstreamHeaders=new Headers({'X-TenderScout-Token':env.N8N_WEBHOOK_TOKEN,'Accept':'application/json'});}catch{return respond({error:'N8N_WEBHOOK_TOKEN enthält unzulässige Header-Zeichen. Den Code ohne Zeilenumbrüche in Cloudflare und n8n speichern.'},503);}
+      let response;
+      try{response=await upstreamFetch(webhook,{method:'GET',headers:upstreamHeaders,redirect:'manual',signal});}
+      catch{return respond({error:signal.aborted?'Zeitlimit beim Lesen des n8n-Webhooks erreicht.':'Die Verbindung zwischen Cloudflare und n8n ist fehlgeschlagen.'},502);}
+      if(response.status>=300&&response.status<400)return respond({error:'Der n8n-Webhook leitet auf eine andere Seite weiter. Produktions-URL und Header Auth prüfen.'},502);
+      if(!response.ok){const messages={401:'Der n8n-Webhook lehnt seinen Zugangscode ab. Header-Auth prüfen.',403:'Der n8n-Webhook verweigert den Zugriff. Header X-TenderScout-Token und N8N_WEBHOOK_TOKEN abgleichen.',404:'Der n8n-Webhook ist nicht aktiv. Workflow veröffentlichen und die Produktions-URL verwenden.',429:'Zu viele Anfragen an n8n. Bitte später erneut versuchen.',500:'Der n8n-Workflow schlägt fehl. Die letzte Ausführung in n8n unter Executions prüfen.'};return respond({error:messages[response.status]||'Der n8n-Webhook konnte nicht ausgeführt werden.'},502);}
+      let data;
+      try{data=await response.json();}catch{return respond({error:'Der n8n-Webhook antwortet leer oder nicht mit JSON. Im Webhook Respond: Using Respond to Webhook Node und im Return-tenders-Node Respond With: JSON einstellen.'},502);}
+      const items=Array.isArray(data)?data:data?.rows;
+      if(!Array.isArray(items)||items.some(r=>!r||typeof r!=='object'||Array.isArray(r)))return respond({error:'Die n8n-Antwort enthält keine rows-Liste. Im Return-tenders-Node den JSON-Ausdruck für { rows: ... } aus der Importdatei verwenden.'},502);
+      if(items.length>10000)return respond({error:'Die Tabelle überschreitet 10.000 Einträge.'},502);
+      return respond({rows:items.map(row=>Object.fromEntries(FIELDS.filter(k=>Object.hasOwn(row,k)).map(k=>[k,row[k]]))),fetchedAt:new Date().toISOString()});
     }
     const rows=[],seen=new Set();let cursor=null;
     const signal=AbortSignal.timeout(30000);
@@ -55,3 +60,4 @@ export function createWorker(upstreamFetch=(input,init)=>fetch(input,init)) {
   }};
 }
 export default createWorker();
+
